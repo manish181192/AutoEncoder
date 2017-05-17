@@ -44,26 +44,29 @@ def load_data_and_labels(positive_data_file, negative_data_file):
     y = np.concatenate([positive_labels, negative_labels], 0)
     return [x_text, y]
 
-def load_data_and_labels_new(filepath, rel):
+def load_data_and_labels_new(filepath):
     """
     Loads MR polarity data from files, splits the data into words and generates labels.
     Returns split sentences and labels.
     """
     # Load data from files
-    no_freebase_relations = 113
+    no_freebase_relations = 51
     train_examples = list(open(filepath, "r").readlines())
     train_examples = [s.strip() for s in train_examples]
-
 
     labels = np.zeros([len(train_examples),no_freebase_relations])
     x_text = []
     for i,l in enumerate(train_examples):
         splt = l.split("\t")
         pattern = splt[0]
-        relation_id = 0
+        relation_id = int(splt[1])
+        # pattern = pattern + " " + bigramString(pattern)
+        # pattern = bigramString(pattern)
+        # print i
+        relation = splt[2]
         x_text.append(pattern)
         label = np.zeros([no_freebase_relations])
-        label[int(relation_id)] = rel
+        label[int(relation_id)] = 1
         labels[i,:] = label
 
 
@@ -71,6 +74,134 @@ def load_data_and_labels_new(filepath, rel):
 
     return [x_text, labels]
 
+
+def get_max_sequence_length(filename):
+    max_sequence_length = 0
+    f = file(filename, 'r')
+    lines = f.readlines()
+    for l in lines:
+        sequence_length = 0
+        words = l.strip("\n").split(" ")
+        for i in enumerate(words):
+            sequence_length += 1
+        if (sequence_length > max_sequence_length):
+            max_sequence_length = sequence_length
+    return max_sequence_length
+
+from GloveModel import Glove_Model
+isGlove = True
+if isGlove == True:
+    g = Glove_Model()
+def get_patternList_stackedEmbedding(line, max_sequence_length):
+    # inputData = np.zeros((len(lines), self.max_sequence_length*300))
+    i = 0
+    # for i, line in enumerate(lines):
+
+    words = line.strip("\n").split(" ")
+    line_emb = np.zeros(shape= [max_sequence_length,300])
+    for word in words:
+        if word == "":
+            continue
+        elif word == "$ARG1":
+            continue
+        elif word == "$ARG2":
+            continue
+        else:
+            try:
+                word_emb = g.model[word]
+                if (word_emb != None):
+                    line_emb[i,:] = word_emb
+                    i = i + 1
+
+            except:
+                print 0, word
+                return None
+        # if(i > 0):
+        #     inputData[j, :] = line_emb
+        #     j += 1
+    return line_emb
+trainPath = "resources/train_web_freepal"
+max_seq = get_max_sequence_length(trainPath)
+
+
+def load_data_and_labels_glove(filepath):
+    """
+    Loads MR polarity data from files, splits the data into words and generates labels.
+    Returns split sentences and labels.
+    """
+    # Load data from files
+    no_freebase_relations = 51
+    train_examples = list(open(filepath, "r").readlines())
+    train_examples = [s.strip() for s in train_examples]
+    train_size = len(train_examples)
+    labels = np.zeros([len(train_examples),no_freebase_relations])
+    # x_text = []
+
+    x_train = np.zeros(shape= [train_size, max_seq, g.DIMENSION])
+    i =0
+    for l in enumerate(train_examples):
+        if i == 257:
+            print "debug"
+        splt = l[1].split("\t")
+        pattern = splt[0]
+        relation_id = int(splt[1])
+        # pattern = pattern + " " + bigramString(pattern)
+        # pattern = bigramString(pattern)
+        # print i
+        relation = splt[2]
+        # x_text.append(pattern)
+
+        emb = get_patternList_stackedEmbedding(pattern, max_seq)
+        if emb is not None:
+            x_train[i] = emb
+            label = np.zeros([no_freebase_relations])
+            label[int(relation_id)] = 1
+            labels[i,:] = label
+            i+=1
+    # Split by words
+
+    return x_train, labels, max_seq
+
+
+def load_data_and_labels_new_entity_Type(filepath):
+    """
+    Loads MR polarity data from files, splits the data into words and generates labels.
+    Returns split sentences and labels.
+    """
+    # Load data from files
+    no_freebase_relations = 113
+    max_entityTypes = 42
+    train_examples = list(open(filepath, "r").readlines())
+    train_examples = [s.strip() for s in train_examples]
+
+    entityTypeArry = np.zeros([len(train_examples), max_entityTypes])
+    labels = np.zeros([len(train_examples),no_freebase_relations])
+    x_text = []
+    for i,l in enumerate(train_examples):
+        splt = l.split("\t")
+        pattern = splt[0]
+
+        relation_id = splt[1]
+        x_text.append(pattern)
+        label = np.zeros([no_freebase_relations])
+        label[int(relation_id)] = 1
+        labels[i,:] = label
+        type_sequence_ids = splt[2].split(" ")
+        for j,type_id in enumerate(type_sequence_ids):
+            # print l
+            entityTypeArry[i,j] = int(type_id)
+
+
+    # Split by words
+
+    return [x_text, labels,entityTypeArry]
+
+def bigramString(strng):
+    bigram_String = ""
+    words = strng.split(" ")
+    for i in range(len(words)-1):
+        bigram_String = bigram_String + " " + words[i] + "_" + words[i+1]
+    return bigram_String
 
 def loadTraindata(self, filename):
     f = file(filename, 'r')

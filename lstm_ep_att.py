@@ -4,6 +4,7 @@ import tensorflow as tf
 class relation_classifier_cpu(object):
     lstm_hidden_size = 100
     Da = 50
+    ip_dimension = 300
 
     def attentive_sum(self, inputs, input_dim, hidden_dim):
         with tf.variable_scope("attention"):
@@ -25,7 +26,8 @@ class relation_classifier_cpu(object):
                 fw_cell = tf.nn.rnn_cell.LSTMCell(num_units=self.lstm_hidden_size,
                                                   initializer=tf.truncated_normal_initializer(stddev=0.001,
                                                                                               dtype=tf.float32))
-                fw_cell = tf.nn.rnn_cell.DropoutWrapper(fw_cell, input_keep_prob= self.dropout_keep_prob)
+                fw_cell = tf.nn.rnn_cell.DropoutWrapper(fw_cell, input_keep_prob= self.dropout_keep_prob,
+                                                        output_keep_prob = self.dropout_keep_prob)
 
                 bw_cell = tf.nn.rnn_cell.LSTMCell(num_units=self.lstm_hidden_size,
                                                   initializer=tf.truncated_normal_initializer(stddev=0.001,
@@ -102,13 +104,13 @@ class relation_classifier_cpu(object):
             embedding_size,  filter_sizes, num_filters, batch_size=64, l2_reg_lambda=0.0):
         self.sequence_length = sequence_length
         # Placeholders for input, output and dropout
-        self.input_x = tf.placeholder(tf.int32, [None, sequence_length], name="input_x")
+        self.input_x = tf.placeholder(tf.float32, [None, sequence_length, self.ip_dimension], name="input_x")
 
         # self.input_left_x = tf.placeholder(tf.int32, [None, sequence_length], name="input_left_x")
         # self.input_right_x = tf.placeholder(tf.int32, [None, sequence_length], name="input_right_x")
         # self.input_center_x = tf.placeholder(tf.int32, [None, sequence_length], name="input_center_x")
         # self.entityTypePId = tf.placeholder(tf.int32, [None, type_sequence_length], name="enitty_types")
-        # self.input_y = tf.placeholder(tf.float32, [None, num_classes], name="input_y")
+        self.input_y = tf.placeholder(tf.float32, [None, num_classes], name="input_y")
         self.dropout_keep_prob = tf.placeholder(tf.float32, name="dropout_keep_prob")
 
         # Keeping track of l2 regularization loss (optional)
@@ -119,16 +121,16 @@ class relation_classifier_cpu(object):
             # embedded_type = tf.nn.embedding_lookup(self.lookup_table_etype, self.entityTypePId)
             # embedded_type_expanded = tf.reshape(embedded_type,[-1, type_sequence_length * type_embedding_size])
 
-        with tf.device('/cpu:0'), tf.name_scope("embedding"):
-            self.lookup_table = tf.Variable(
-                tf.random_uniform([vocab_size, embedding_size], -1.0, 1.0),
-                name="lookup")
-            embedded_chars_left = tf.nn.embedding_lookup(self.lookup_table, self.input_x)
-            # embedded_chars_right = tf.nn.embedding_lookup(self.lookup_table, self.input_right_x)
-            # embedded_chars_center = tf.nn.embedding_lookup(self.lookup_table, self.input_center_x)
-
-            embedded_chars_expanded = tf.expand_dims(embedded_chars_left, -1)
-
+        # with tf.device('/cpu:0'), tf.name_scope("embedding"):
+        #     self.lookup_table = tf.Variable(
+        #         tf.random_uniform([vocab_size, embedding_size], -1.0, 1.0),
+        #         name="lookup")
+        #     embedded_chars_left = tf.nn.embedding_lookup(self.lookup_table, self.input_x)
+        #     # embedded_chars_right = tf.nn.embedding_lookup(self.lookup_table, self.input_right_x)
+        #     # embedded_chars_center = tf.nn.embedding_lookup(self.lookup_table, self.input_center_x)
+        #
+        #     embedded_chars_expanded = tf.expand_dims(embedded_chars_left, -1)
+        embedded_chars_expanded = self.input_x
             # embedded_chars_expanded = tf.nn.dropout( embedded_chars_expanded, keep_prob= self.dropout_keep_prob)
 
             # x_1 = tf.transpose(embedded_chars_right, perm=[1, 0, 2])
@@ -152,14 +154,14 @@ class relation_classifier_cpu(object):
         #     reshaped_sgm_exp = tf.expand_dims(reshaped_sgm, -1)
         #     x_left = tf.mul(embedded_chars_expanded, reshaped_sgm_exp)
 
-            x_ = tf.reshape(embedded_chars_expanded, [tf.shape(self.input_x)[0], sequence_length, embedding_size])
-            x_1 = tf.transpose(x_, perm=[1, 0, 2])
-            x_2 = tf.reshape(x_1, [-1, embedding_size])
-            x_left = tf.split(value=x_2,
-                              num_split=sequence_length,
-                              split_dim=0)
-            # x_right = tf.mul(x_right, reshaped_sgm_exp)
-            # x_center = tf.mul(x_center, reshaped_sgm_exp)
+        # x_ = tf.reshape(embedded_chars_expanded, [tf.shape(self.input_x)[0], sequence_length, embedding_size])
+        x_1 = tf.transpose(embedded_chars_expanded, perm=[1, 0, 2])
+        x_2 = tf.reshape(x_1, [-1, embedding_size])
+        x_left = tf.split(value=x_2,
+                          num_split=sequence_length,
+                          split_dim=0)
+        # x_right = tf.mul(x_right, reshaped_sgm_exp)
+        # x_center = tf.mul(x_center, reshaped_sgm_exp)
 
         Vc_left = self.get_context_vector(x_left)
         # Vc_right = self.get_context_vector(x_right)
@@ -172,48 +174,23 @@ class relation_classifier_cpu(object):
         #     self.h_drop = tf.nn.dropout(Vc, self.dropout_keep_prob)
 
         # Final (unnormalized) scores and predictions
+        with tf.name_scope("output"):
+            W = tf.Variable(tf.truncated_normal(shape=[2 * self.lstm_hidden_size, num_classes], name="W"))
+            # "W",
+            # shape=[2*embedding_size, num_classes],
+            # initializer=tf.contrib.layers.xavier_initializer())
+            b = tf.Variable(tf.constant(0.1, shape=[num_classes]), name="b")
+            # l2_loss += tf.nn.l2_loss(W)
+            # l2_loss += tf.nn.l2_loss(b)
+            self.scores = tf.nn.xw_plus_b(self.Vc, W, b, name="scores")
+            self.predictions = tf.argmax(self.scores, 1, name="predictions")
 
+        # CalculateMean cross-entropy loss
+        with tf.name_scope("loss"):
+            losses = tf.nn.softmax_cross_entropy_with_logits(self.scores, self.input_y)
+            self.loss = tf.reduce_mean(losses) + l2_reg_lambda * l2_loss
 
-        with tf.name_scope('auto_encoder'):
-            self.input_dimension = 2*self.lstm_hidden_size
-            self.output_dimesion = 2
-            self.input_embeddings = self.Vc
-
-            # self.encode(self.input_embeddings)
-            W1 = tf.Variable(tf.truncated_normal(
-                shape=[self.input_dimension, self.output_dimesion],
-                stddev=0.01))
-            B1 = tf.Variable(tf.truncated_normal(shape=[self.output_dimesion], stddev=0.01))
-            op_ = tf.nn.xw_plus_b(self.input_embeddings, W1, B1)
-            self.reduced_embeddings = tf.nn.relu(op_, name="encoded_output")
-
-            # self.decode(self.reduced_embeddings)
-            W2 = tf.Variable(tf.truncated_normal(shape=[self.output_dimesion, self.input_dimension], stddev=0.01))
-            B2 = tf.Variable(tf.truncated_normal(shape=[self.input_dimension], stddev=0.01))
-            op_1 = tf.nn.xw_plus_b(self.reduced_embeddings, W2, B2)
-            self.predicted_embedding = tf.nn.relu(op_1, name="decoded_output")
-
-        self.loss_vector = tf.square(tf.sub(self.input_embeddings, self.predicted_embedding))
-        self.loss =  tf.reduce_mean(self.loss_vector)
-
-        #
-        # with tf.name_scope("output"):
-        #     W = tf.Variable(tf.truncated_normal(shape=[2 * self.lstm_hidden_size, num_classes], name="W"))
-        #     # "W",
-        #     # shape=[2*embedding_size, num_classes],
-        #     # initializer=tf.contrib.layers.xavier_initializer())
-        #     b = tf.Variable(tf.constant(0.1, shape=[num_classes]), name="b")
-        #     # l2_loss += tf.nn.l2_loss(W)
-        #     # l2_loss += tf.nn.l2_loss(b)
-        #     self.scores = tf.nn.xw_plus_b(self.Vc, W, b, name="scores")
-        #     self.predictions = tf.argmax(self.scores, 1, name="predictions")
-        #
-        # # CalculateMean cross-entropy loss
-        # with tf.name_scope("loss"):
-        #     losses = tf.nn.softmax_cross_entropy_with_logits(self.scores, self.input_y)
-        #     self.loss = tf.reduce_mean(losses) + l2_reg_lambda * l2_loss
-        #
-        # # Accuracy
-        # with tf.name_scope("accuracy"):
-        #     correct_predictions = tf.equal(self.predictions, tf.argmax(self.input_y, 1))
-        #     self.accuracy = tf.reduce_mean(tf.cast(correct_predictions, "float"), name="accuracy")
+        # Accuracy
+        with tf.name_scope("accuracy"):
+            correct_predictions = tf.equal(self.predictions, tf.argmax(self.input_y, 1))
+            self.accuracy = tf.reduce_mean(tf.cast(correct_predictions, "float"), name="accuracy")

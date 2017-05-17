@@ -4,6 +4,7 @@ import tensorflow as tf
 class relation_classifier_cpu(object):
     lstm_hidden_size = 100
     Da = 50
+    ip_dimension = 300
 
     def attentive_sum(self, inputs, input_dim, hidden_dim):
         with tf.variable_scope("attention"):
@@ -32,11 +33,11 @@ class relation_classifier_cpu(object):
                                                                                               dtype=tf.float32))
                 bw_cell = tf.nn.rnn_cell.DropoutWrapper(bw_cell, input_keep_prob= self.dropout_keep_prob)
 
-                outputs, fw_states, bw_states = tf.nn.bidirectional_rnn(cell_fw=fw_cell,
+                self.outputs, fw_states, bw_states = tf.nn.bidirectional_rnn(cell_fw=fw_cell,
                                                                         cell_bw=bw_cell,
                                                                         inputs=x,
                                                                         dtype=tf.float32)
-            Vc, attentions = self.attentive_sum(outputs,
+            Vc, attentions = self.attentive_sum(self.outputs,
                                            input_dim= 2* self.lstm_hidden_size,
                                            hidden_dim= self.Da)
             # with tf.name_scope('attention_layer'):
@@ -102,7 +103,7 @@ class relation_classifier_cpu(object):
             embedding_size,  filter_sizes, num_filters, batch_size=64, l2_reg_lambda=0.0):
         self.sequence_length = sequence_length
         # Placeholders for input, output and dropout
-        self.input_x = tf.placeholder(tf.int32, [None, sequence_length], name="input_x")
+        self.input_x = tf.placeholder(tf.float32, [None, sequence_length, self.ip_dimension], name="input_x")
 
         # self.input_left_x = tf.placeholder(tf.int32, [None, sequence_length], name="input_left_x")
         # self.input_right_x = tf.placeholder(tf.int32, [None, sequence_length], name="input_right_x")
@@ -115,32 +116,32 @@ class relation_classifier_cpu(object):
         l2_loss = tf.constant(0.0)
 
         # with tf.device('/cpu:0'), tf.name_scope("entity_type_embedding"):
-            # self.lookup_table_etype = tf.Variable(tf.random_uniform([type_size, type_embedding_size], -1.0, 1.0),name="etype_lookup")
-            # embedded_type = tf.nn.embedding_lookup(self.lookup_table_etype, self.entityTypePId)
-            # embedded_type_expanded = tf.reshape(embedded_type,[-1, type_sequence_length * type_embedding_size])
+        # self.lookup_table_etype = tf.Variable(tf.random_uniform([type_size, type_embedding_size], -1.0, 1.0),name="etype_lookup")
+        # embedded_type = tf.nn.embedding_lookup(self.lookup_table_etype, self.entityTypePId)
+        # embedded_type_expanded = tf.reshape(embedded_type,[-1, type_sequence_length * type_embedding_size])
 
-        with tf.device('/cpu:0'), tf.name_scope("embedding"):
-            self.lookup_table = tf.Variable(
-                tf.random_uniform([vocab_size, embedding_size], -1.0, 1.0),
-                name="lookup")
-            embedded_chars_left = tf.nn.embedding_lookup(self.lookup_table, self.input_x)
-            # embedded_chars_right = tf.nn.embedding_lookup(self.lookup_table, self.input_right_x)
-            # embedded_chars_center = tf.nn.embedding_lookup(self.lookup_table, self.input_center_x)
+        # with tf.device('/cpu:0'), tf.name_scope("embedding"):
+        #     self.lookup_table = tf.Variable(
+        #         tf.random_uniform([vocab_size, embedding_size], -1.0, 1.0),
+        #         name="lookup")
+        #     embedded_chars_left = tf.nn.embedding_lookup(self.lookup_table, self.input_x)
+        #     # embedded_chars_right = tf.nn.embedding_lookup(self.lookup_table, self.input_right_x)
+        #     # embedded_chars_center = tf.nn.embedding_lookup(self.lookup_table, self.input_center_x)
+        #
+        #     embedded_chars_expanded = tf.expand_dims(embedded_chars_left, -1)
+        embedded_chars_expanded = self.input_x
+        # embedded_chars_expanded = tf.nn.dropout( embedded_chars_expanded, keep_prob= self.dropout_keep_prob)
 
-            embedded_chars_expanded = tf.expand_dims(embedded_chars_left, -1)
-
-            # embedded_chars_expanded = tf.nn.dropout( embedded_chars_expanded, keep_prob= self.dropout_keep_prob)
-
-            # x_1 = tf.transpose(embedded_chars_right, perm=[1, 0, 2])
-            # x_2 = tf.reshape(x_1, [-1, embedding_size])
-            # x_right = tf.split(value=x_2,
-            #              num_split=sequence_length,
-            #              split_dim=0)
-            # x_1 = tf.transpose(embedded_chars_center, perm=[1, 0, 2])
-            # x_2 = tf.reshape(x_1, [-1, embedding_size])
-            # x_center = tf.split(value=x_2,
-            #              num_split=sequence_length,
-            #              split_dim=0)
+        # x_1 = tf.transpose(embedded_chars_right, perm=[1, 0, 2])
+        # x_2 = tf.reshape(x_1, [-1, embedding_size])
+        # x_right = tf.split(value=x_2,
+        #              num_split=sequence_length,
+        #              split_dim=0)
+        # x_1 = tf.transpose(embedded_chars_center, perm=[1, 0, 2])
+        # x_2 = tf.reshape(x_1, [-1, embedding_size])
+        # x_center = tf.split(value=x_2,
+        #              num_split=sequence_length,
+        #              split_dim=0)
         # with tf.name_scope("Attn-layer"):
         #     Wa = tf.Variable(
         #         tf.truncated_normal([type_sequence_length * type_embedding_size, sequence_length * embedding_size],
@@ -152,16 +153,16 @@ class relation_classifier_cpu(object):
         #     reshaped_sgm_exp = tf.expand_dims(reshaped_sgm, -1)
         #     x_left = tf.mul(embedded_chars_expanded, reshaped_sgm_exp)
 
-            x_ = tf.reshape(embedded_chars_expanded, [tf.shape(self.input_x)[0], sequence_length, embedding_size])
-            x_1 = tf.transpose(x_, perm=[1, 0, 2])
-            x_2 = tf.reshape(x_1, [-1, embedding_size])
-            x_left = tf.split(value=x_2,
-                              num_split=sequence_length,
-                              split_dim=0)
+        # x_ = tf.reshape(embedded_chars_expanded, [tf.shape(self.input_x)[0], sequence_length, embedding_size])
+        # self.x_1 = tf.transpose(embedded_chars_expanded, perm=[1, 0, 2])
+        # self.x_2 = tf.reshape(self.x_1, [-1, embedding_size])
+        # self.x_left = tf.split(value=self.x_2,
+        #                   num_split=sequence_length,
+        #                   split_dim=0)
             # x_right = tf.mul(x_right, reshaped_sgm_exp)
             # x_center = tf.mul(x_center, reshaped_sgm_exp)
-
-        Vc_left = self.get_context_vector(x_left)
+        self.x_left = tf.unstack(embedded_chars_expanded, 14, 1)
+        Vc_left = self.get_context_vector(self.x_left)
         # Vc_right = self.get_context_vector(x_right)
         # Vc_center = self.get_context_vector(x_center)
 
@@ -176,7 +177,7 @@ class relation_classifier_cpu(object):
 
         with tf.name_scope('auto_encoder'):
             self.input_dimension = 2*self.lstm_hidden_size
-            self.output_dimesion = 2
+            self.output_dimesion = 50
             self.input_embeddings = self.Vc
 
             # self.encode(self.input_embeddings)
@@ -194,7 +195,7 @@ class relation_classifier_cpu(object):
             self.predicted_embedding = tf.nn.relu(op_1, name="decoded_output")
 
         self.loss_vector = tf.square(tf.sub(self.input_embeddings, self.predicted_embedding))
-        self.loss =  tf.reduce_mean(self.loss_vector)
+        self.loss = tf.reduce_mean(tf.reduce_sum(self.loss_vector, axis= 1), axis= 0)
 
         #
         # with tf.name_scope("output"):
